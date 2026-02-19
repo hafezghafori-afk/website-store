@@ -1,0 +1,49 @@
+{
+  "name": "website-store",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:3002": "next dev --port 3002",
+    "dev:auto": "node scripts/dev-auto.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "seed": "node prisma/seed.mjs",
+    "preflight:hosting": "node scripts/preflight-hosting.mjs",
+    "simulate:paid-order": "node scripts/simulate-paid-order.mjs",
+    "smoke:api-key-flow": "node scripts/smoke-api-key-flow.mjs",
+    "smoke:payments": "node scripts/smoke-payments.mjs",
+    "test:webhook:stripe": "node scripts/test-stripe-webhook.mjs",
+    "test:webhook:iran": "node scripts/test-iran-webhook.mjs",
+    "test:zarinpal:callback": "node scripts/test-zarinpal-callback.mjs",
+    "cleanup:test-data": "node scripts/cleanup-test-data.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.862.0",
+    "@aws-sdk/s3-request-presigner": "^3.862.0",
+    "@clerk/nextjs": "^5.7.0",
+    "@prisma/client": "^5.20.0",
+    "clsx": "^2.1.1",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "stripe": "^16.8.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8.4.47",
+    "prisma": "^5.20.0",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2"
+  }
+}

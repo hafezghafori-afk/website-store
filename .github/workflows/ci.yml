@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: website_store
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d website_store"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/website_store
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
+      CLERK_SECRET_KEY: sk_test_xxx
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy
+      IRAN_GATEWAY_WEBHOOK_SECRET: ci_iran_webhook_secret
+      NEXT_PUBLIC_APP_URL: http://localhost:3002
+      ZARINPAL_MERCHANT_ID: ""
+      ZARINPAL_MOCK_MODE: "true"
+      IRR_PER_USD: "650000"
+      IRR_PER_EUR: "700000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for PostgreSQL
+        run: |
+          timeout 60 bash -c 'until </dev/tcp/127.0.0.1/5432; do sleep 1; done'
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Prisma migrate deploy
+        run: npm run prisma:migrate:deploy
+
+      - name: Seed database
+        run: npm run seed
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Payment smoke tests
+        run: npm run smoke:payments -- --email ci-buyer@example.com --productId prd-1 --licenseType personal --currency USD

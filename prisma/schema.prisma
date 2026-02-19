@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductStatus {
+  draft
+  published
+  archived
+}
+
+enum LicenseType {
+  personal
+  commercial
+}
+
+enum OrderStatus {
+  pending
+  paid
+  failed
+  refunded
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  cancelled
+}
+
+enum CouponType {
+  percent
+  fixed
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum SupportReplyAuthor {
+  user
+  admin
+  system
+}
+
+enum Currency {
+  USD
+  EUR
+  IRR
+  AFN
+}
+
+model User {
+  id             String          @id @default(cuid())
+  clerkId        String          @unique
+  email          String          @unique
+  name           String?
+  country        String?
+  locale         String          @default("fa")
+  preferredCurrency Currency     @default(USD)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  orders         Order[]
+  downloadTokens DownloadToken[]
+  downloadLogs   DownloadLog[]
+  apiKeys        ApiKey[]
+  supportTickets SupportTicket[]
+  supportReplies SupportTicketReply[]
+  auditEvents    AuditEvent[]
+}
+
+model Product {
+  id            String          @id @default(cuid())
+  slug          String          @unique
+  title         String
+  summary       String
+  description   String
+  coverImage    String
+  demoUrl       String?
+  isBundle      Boolean         @default(false)
+  status        ProductStatus   @default(draft)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  variants      ProductVariant[]
+  versions      ProductVersion[]
+  tagMaps       ProductTagMap[]
+  techMaps      ProductTechMap[]
+  downloadTokens DownloadToken[]
+}
+
+model ProductVariant {
+  id           String      @id @default(cuid())
+  productId    String
+  licenseType  LicenseType
+  priceUSD     Int
+  priceEUR     Int
+  priceIRR     Int?
+  priceAFN     Int?
+  isActive     Boolean     @default(true)
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+
+  @@index([productId])
+}
+
+model ProductTag {
+  id      String         @id @default(cuid())
+  name    String         @unique
+  tagMaps ProductTagMap[]
+}
+
+model ProductTagMap {
+  productId String
+  tagId     String
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       ProductTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@index([tagId])
+}
+
+model ProductTech {
+  id       String          @id @default(cuid())
+  name     String          @unique
+  techMaps ProductTechMap[]
+}
+
+model ProductTechMap {
+  productId String
+  techId    String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tech      ProductTech @relation(fields: [techId], references: [id], onDelete: Cascade)
+
+  @@id([productId, techId])
+  @@index([techId])
+}
+
+model ProductVersion {
+  id         String   @id @default(cuid())
+  productId  String
+  version    String
+  changelog  String
+  fileKey    String
+  fileSize   Int
+  createdAt  DateTime @default(now())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@unique([productId, version])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  userId     String
+  total      Int
+  currency   Currency
+  status     OrderStatus @default(pending)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      OrderItem[]
+  payments   Payment[]
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id               String         @id @default(cuid())
+  orderId          String
+  productVariantId String
+  price            Int
+  currency         Currency
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productVariantId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String
+  provider    String
+  providerRef String?
+  status      PaymentStatus @default(pending)
+  meta        Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([provider, providerRef])
+}
+
+model DownloadToken {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  expiresAt  DateTime
+  maxUses    Int      @default(1)
+  usedCount  Int      @default(0)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId, productId])
+}
+
+model DownloadLog {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model Coupon {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  type      CouponType @default(percent)
+  amount    Int
+  currency  Currency?
+  isActive  Boolean    @default(true)
+  maxUses   Int?
+  usedCount Int        @default(0)
+  expiresAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  keyPrefix  String
+  keyHash    String    @unique
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+model SupportTicket {
+  id         String              @id @default(cuid())
+  userId     String?
+  email      String
+  name       String?
+  subject    String
+  message    String
+  status     SupportTicketStatus @default(open)
+  meta       Json?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  resolvedAt DateTime?
+  user       User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  replies    SupportTicketReply[]
+
+  @@index([userId])
+  @@index([status, createdAt])
+}
+
+model SupportTicketReply {
+  id         String             @id @default(cuid())
+  ticketId   String
+  userId     String?
+  authorType SupportReplyAuthor
+  message    String
+  createdAt  DateTime           @default(now())
+  ticket     SupportTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([userId])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  targetType  String
+  targetId    String?
+  details     Json?
+  createdAt   DateTime @default(now())
+  actorUser   User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([actorUserId, createdAt])
+}
