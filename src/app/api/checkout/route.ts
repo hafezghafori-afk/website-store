@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/audit";
 import { requireAppUser } from "@/lib/app-user";
+import { isClerkEnabled } from "@/lib/clerk-config";
 import { ensureProductInDatabase, getVariantAmount, getVariantForLicense } from "@/lib/catalog-db";
 import { BASE_CURRENCY, EUR_RATE, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { getPaymentOptions } from "@/lib/payments";
@@ -60,8 +61,37 @@ function getCouponDiscount(subtotal: number, coupon: { type: string; amount: num
 }
 
 export async function POST(request: Request) {
+  let clerkUserId: string | null = null;
+
+  if (isClerkEnabled()) {
+    try {
+      const clerk = await import("@clerk/nextjs/server");
+      clerkUserId = clerk.auth().userId ?? null;
+    } catch (error) {
+      console.error("[checkout] failed to resolve Clerk auth context", error);
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Authentication context is not available on server. Check Clerk middleware and environment keys."
+        },
+        { status: 500 }
+      );
+    }
+  }
+
   const appUser = await requireAppUser();
   if (!appUser) {
+    if (isClerkEnabled() && clerkUserId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            "Signed-in session detected, but user profile could not be loaded from database. Check DATABASE_URL and run Prisma migrations."
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ ok: false, message: "Login required for checkout." }, { status: 401 });
   }
 
