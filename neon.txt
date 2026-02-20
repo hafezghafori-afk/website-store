@@ -1,0 +1,6 @@
+neon:
+
+! npx neonctl@latest --force-auth init --agent claude
+
+postgresql://neondb_owner:npg_HOsc3Y4INlUQ@ep-bold-pond-aip54xik-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+
