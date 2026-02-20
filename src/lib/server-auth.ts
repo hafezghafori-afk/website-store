@@ -1,8 +1,27 @@
 import { isClerkEnabled } from "@/lib/clerk-config";
 
 function getClerkAuth() {
-  const clerk = require("@clerk/nextjs/server") as typeof import("@clerk/nextjs/server");
-  return clerk.auth;
+  try {
+    const clerk = require("@clerk/nextjs/server") as typeof import("@clerk/nextjs/server");
+    return clerk.auth;
+  } catch (error) {
+    console.error("[server-auth] failed to load Clerk server module", error);
+    return null;
+  }
+}
+
+function getClerkSession() {
+  const authFn = getClerkAuth();
+  if (!authFn) {
+    return null;
+  }
+
+  try {
+    return authFn();
+  } catch (error) {
+    console.error("[server-auth] auth() failed", error);
+    return null;
+  }
 }
 
 export function getUserRole(): string {
@@ -10,7 +29,8 @@ export function getUserRole(): string {
     return "admin";
   }
 
-  const { sessionClaims } = getClerkAuth()();
+  const session = getClerkSession();
+  const sessionClaims = session?.sessionClaims;
   const metadataRole = (sessionClaims?.metadata as { role?: string } | undefined)?.role;
   const publicMetadataRole = (sessionClaims?.publicMetadata as { role?: string } | undefined)?.role;
   const privateMetadataRole = (sessionClaims?.privateMetadata as { role?: string } | undefined)?.role;
@@ -27,8 +47,8 @@ export function getCurrentUserId() {
     return "dev-local-user";
   }
 
-  const { userId } = getClerkAuth()();
-  return userId ?? null;
+  const session = getClerkSession();
+  return session?.userId ?? null;
 }
 
 export function canAccessAdmin() {
