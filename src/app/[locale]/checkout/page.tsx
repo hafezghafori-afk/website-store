@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import { getStoreProductById, getStoreProducts } from "@/lib/catalog";
@@ -5,7 +6,9 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { CheckoutSummary } from "@/components/checkout-summary";
 import { Container } from "@/components/container";
 import { requireAppUser } from "@/lib/app-user";
+import { isClerkEnabled } from "@/lib/clerk-config";
 import { BASE_CURRENCY, type Currency, type LicenseType, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
+import { getCurrentUserId } from "@/lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +33,9 @@ export default async function CheckoutPage({
   noStore();
 
   const appUser = await requireAppUser();
+  const clerkEnabled = isClerkEnabled();
+  const currentUserId = clerkEnabled ? getCurrentUserId() : null;
+  const needsLogin = clerkEnabled && !currentUserId;
   const currency = resolveCurrency(searchParams.currency ?? appUser?.preferredCurrency);
   const licenseType = resolveLicense(searchParams.licenseType);
   const country = (searchParams.country ?? appUser?.country ?? "US").toUpperCase();
@@ -91,10 +97,30 @@ export default async function CheckoutPage({
         </button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <CheckoutForm productId={product.id} licenseType={licenseType} currency={currency} initialCountry={country} />
-        <CheckoutSummary product={product} licenseType={licenseType} currency={currency} locale={params.locale} />
-      </div>
+      {needsLogin ? (
+        <div className="surface-card space-y-4 p-5">
+          <h2 className="text-xl font-black tracking-tight">Login Required</h2>
+          <p className="text-sm text-slate-600">
+            Please login to continue checkout and access secure downloads from your dashboard.
+          </p>
+          <div>
+            <Link href={`/${params.locale}/login`} className="primary-btn text-sm">
+              Login
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <CheckoutForm
+            locale={params.locale}
+            productId={product.id}
+            licenseType={licenseType}
+            currency={currency}
+            initialCountry={country}
+          />
+          <CheckoutSummary product={product} licenseType={licenseType} currency={currency} locale={params.locale} />
+        </div>
+      )}
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
         After successful payment you will be redirected to Downloads in your dashboard.

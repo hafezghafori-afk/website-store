@@ -40,11 +40,19 @@ export function ProductCard({ locale, currency, licenseType, product }: ProductC
           ))}
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="space-y-3">
           <p className="text-base font-bold">{priceLabel}</p>
-          <Link href={`/${locale}/templates/${product.slug}`} className="secondary-btn text-sm">
-            {t.common.details}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/${locale}/checkout?productId=${product.id}&licenseType=${licenseType}&currency=${currency}`}
+              className="primary-btn text-sm"
+            >
+              {t.common.addToCart}
+            </Link>
+            <Link href={`/${locale}/templates/${product.slug}`} className="secondary-btn text-sm">
+              {t.common.details}
+            </Link>
+          </div>
         </div>
       </div>
     </article>

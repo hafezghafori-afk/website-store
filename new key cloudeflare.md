@@ -50,3 +50,19 @@ Use jurisdiction-specific endpoints for S3 clients:
 
 https://6734d0297a94b7c7aa45390c41c766e7.r2.cloudflarestorage.com
 
+
+
+
+
+clerk
+
+public key:
+
+pk\_test\_c291Z2h0LWNvcmFsLTQuY2xlcmsuYWNjb3VudHMuZGV2JA
+
+
+
+secret key: 
+
+sk\_test\_p45TAjY9gYNEwzicDTCckB32M5Q6xb49064M45UeLd
+

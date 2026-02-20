@@ -1,5 +1,5 @@
 import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Container } from "@/components/container";
 import { isClerkEnabled } from "@/lib/clerk-config";
 
@@ -7,7 +7,21 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
   const clerkEnabled = isClerkEnabled();
 
   if (!clerkEnabled) {
-    redirect(`/${params.locale}/dashboard`);
+    return (
+      <Container className="py-14">
+        <div className="surface-card mx-auto max-w-lg space-y-4 p-6 text-center">
+          <h1 className="text-2xl font-black">Authentication Disabled</h1>
+          <p className="text-sm text-slate-600">
+            Clerk keys are not configured for this environment. Please set valid Clerk keys in Vercel environment variables.
+          </p>
+          <div className="flex justify-center">
+            <Link href={`/${params.locale}`} className="secondary-btn">
+              Back To Home
+            </Link>
+          </div>
+        </div>
+      </Container>
+    );
   }
 
   return (

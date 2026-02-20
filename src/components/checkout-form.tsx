@@ -5,6 +5,7 @@ import type { Currency, LicenseType } from "@/lib/constants";
 import { getPaymentOptions } from "@/lib/payments";
 
 type CheckoutFormProps = {
+  locale: string;
   productId: string;
   licenseType: LicenseType;
   currency: Currency;
@@ -18,7 +19,7 @@ type CheckoutResult = {
   orderId?: string;
 };
 
-export function CheckoutForm({ productId, licenseType, currency, initialCountry }: CheckoutFormProps) {
+export function CheckoutForm({ locale, productId, licenseType, currency, initialCountry }: CheckoutFormProps) {
   const [country, setCountry] = useState(initialCountry.toUpperCase());
   const options = useMemo(() => getPaymentOptions(country, currency).filter((item) => item.enabled), [country, currency]);
   const [provider, setProvider] = useState(options[0]?.provider ?? "stripe");
@@ -122,6 +123,12 @@ export function CheckoutForm({ productId, licenseType, currency, initialCountry 
 
       {message ? (
         <p className={status === "error" ? "text-sm text-red-600" : "text-sm text-emerald-600"}>{message}</p>
+      ) : null}
+
+      {status === "error" && message.toLowerCase().includes("login required") ? (
+        <a href={`/${locale}/login`} className="text-sm font-semibold text-brand-700 underline">
+          Login to continue checkout
+        </a>
       ) : null}
     </form>
   );

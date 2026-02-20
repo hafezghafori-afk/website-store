@@ -8,8 +8,27 @@ export type PaymentOption = {
   enabled: boolean;
 };
 
+function hasValidStripePublishableKey() {
+  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
+  if (!key) {
+    return false;
+  }
+
+  const normalized = key.toLowerCase();
+  if (
+    normalized.includes("xxx") ||
+    normalized.includes("example") ||
+    normalized.includes("your_")
+  ) {
+    return false;
+  }
+
+  return key.startsWith("pk_test_") || key.startsWith("pk_live_");
+}
+
 export function getPaymentOptions(countryCode: string, currency: Currency): PaymentOption[] {
   const country = countryCode.toUpperCase();
+  const stripeEnabled = (currency === "USD" || currency === "EUR") && hasValidStripePublishableKey();
 
   if (country === "IR") {
     return [
@@ -23,7 +42,7 @@ export function getPaymentOptions(countryCode: string, currency: Currency): Paym
         provider: "stripe",
         label: "Stripe",
         description: "International cards if customer has foreign payment option.",
-        enabled: currency === "USD" || currency === "EUR"
+        enabled: stripeEnabled
       }
     ];
   }
@@ -40,17 +59,28 @@ export function getPaymentOptions(countryCode: string, currency: Currency): Paym
         provider: "stripe",
         label: "Stripe",
         description: "Pay with international cards in USD/EUR.",
-        enabled: currency === "USD" || currency === "EUR"
+        enabled: stripeEnabled
+      }
+    ];
+  }
+
+  if (stripeEnabled) {
+    return [
+      {
+        provider: "stripe",
+        label: "Stripe",
+        description: "Cards, Apple Pay, and Google Pay.",
+        enabled: true
       }
     ];
   }
 
   return [
     {
-      provider: "stripe",
-      label: "Stripe",
-      description: "Cards, Apple Pay, and Google Pay.",
-      enabled: currency === "USD" || currency === "EUR"
+      provider: "manual-af",
+      label: "Manual Transfer",
+      description: "Fallback option: submit transfer receipt for admin verification.",
+      enabled: true
     }
   ];
 }
