@@ -49,12 +49,17 @@ export async function requireAppUser() {
 
     const clerk = await import("@clerk/nextjs/server");
     const { userId } = clerk.auth();
-    const currentUser = clerk.currentUser;
     if (!userId) {
       return null;
     }
 
-    const clerkUser = await currentUser();
+    let clerkUser: Awaited<ReturnType<typeof clerk.currentUser>> | null = null;
+    try {
+      clerkUser = await clerk.currentUser();
+    } catch (error) {
+      console.warn("[requireAppUser] currentUser() failed, using auth() fallback", error);
+    }
+
     const email = getPrimaryEmail(clerkUser) ?? `${userId}@clerk.local`;
     const name = getDisplayName(clerkUser);
 
