@@ -15,7 +15,12 @@ function applyLocaleRedirect(req: Request) {
   const url = new URL(req.url);
   const pathname = url.pathname;
 
-  if (pathname.startsWith("/api") || pathname.startsWith("/_next") || pathname.includes(".")) {
+  if (
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/clerk_") ||
+    pathname.includes(".")
+  ) {
     return NextResponse.next();
   }
 
