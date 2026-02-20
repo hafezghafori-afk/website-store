@@ -11,7 +11,7 @@ const protectedRoutes = createRouteMatcher([
   "/api/admin(.*)"
 ]);
 
-function applyLocaleRedirect(req: Request) {
+function resolveLocaleRedirect(req: Request) {
   const url = new URL(req.url);
   const pathname = url.pathname;
 
@@ -21,21 +21,21 @@ function applyLocaleRedirect(req: Request) {
     pathname.startsWith("/clerk_") ||
     pathname.includes(".")
   ) {
-    return NextResponse.next();
+    return null;
   }
 
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length === 0) {
-    return NextResponse.redirect(new URL(`/${DEFAULT_LOCALE}`, req.url));
+    return new URL(`/${DEFAULT_LOCALE}`, req.url);
   }
 
   const maybeLocale = segments[0];
   if (!LOCALES.includes(maybeLocale as (typeof LOCALES)[number])) {
-    return NextResponse.redirect(new URL(`/${DEFAULT_LOCALE}${pathname}`, req.url));
+    return new URL(`/${DEFAULT_LOCALE}${pathname}`, req.url);
   }
 
-  return NextResponse.next();
+  return null;
 }
 
 const withClerkAuth = clerkMiddleware((auth, req) => {
@@ -43,10 +43,24 @@ const withClerkAuth = clerkMiddleware((auth, req) => {
     auth().protect();
   }
 
-  return applyLocaleRedirect(req);
+  const redirectUrl = resolveLocaleRedirect(req);
+  if (redirectUrl) {
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return undefined;
 });
 
-const middleware = isClerkEnabled() ? withClerkAuth : applyLocaleRedirect;
+function localeOnlyMiddleware(req: Request) {
+  const redirectUrl = resolveLocaleRedirect(req);
+  if (redirectUrl) {
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return NextResponse.next();
+}
+
+const middleware = isClerkEnabled() ? withClerkAuth : localeOnlyMiddleware;
 
 export default middleware;
 
