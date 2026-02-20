@@ -1,9 +1,15 @@
 import type { MetadataRoute } from "next";
 
 function resolveBaseUrl() {
-  const fallback = "http://localhost:3002";
+  const fallback = "https://website-store-five.vercel.app";
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.VERCEL_URL?.trim() || fallback;
+  const normalized = raw.replace(/^['"]|['"]$/g, "");
+
   try {
-    return new URL(process.env.NEXT_PUBLIC_APP_URL ?? fallback);
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+      return new URL(normalized);
+    }
+    return new URL(`https://${normalized}`);
   } catch {
     return new URL(fallback);
   }

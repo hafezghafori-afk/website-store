@@ -1,11 +1,17 @@
 import type { MetadataRoute } from "next";
-import { getStoreProducts } from "@/lib/catalog";
 import { LOCALES } from "@/lib/constants";
+import { PRODUCTS } from "@/lib/mock-data";
 
 function resolveBaseUrl() {
-  const fallback = "http://localhost:3002";
+  const fallback = "https://website-store-five.vercel.app";
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.VERCEL_URL?.trim() || fallback;
+  const normalized = raw.replace(/^['"]|['"]$/g, "");
+
   try {
-    return new URL(process.env.NEXT_PUBLIC_APP_URL ?? fallback);
+    if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+      return new URL(normalized);
+    }
+    return new URL(`https://${normalized}`);
   } catch {
     return new URL(fallback);
   }
@@ -16,9 +22,8 @@ function toAbsolute(path: string) {
   return new URL(path, base).toString();
 }
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
-  const products = await getStoreProducts();
   const entries: MetadataRoute.Sitemap = [];
 
   for (const locale of LOCALES) {
@@ -55,7 +60,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }
     );
 
-    for (const product of products) {
+    for (const product of PRODUCTS) {
       entries.push({
         url: toAbsolute(`/${locale}/templates/${product.slug}`),
         lastModified: now,
