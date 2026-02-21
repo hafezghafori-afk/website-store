@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { AddToCartButton } from "@/components/add-to-cart-button";
 import type { Currency, LicenseType, Locale } from "@/lib/constants";
 import { getDictionary } from "@/lib/i18n";
 import { getPriceLabel } from "@/lib/products";
@@ -43,12 +44,13 @@ export function ProductCard({ locale, currency, licenseType, product }: ProductC
         <div className="space-y-3">
           <p className="text-base font-bold">{priceLabel}</p>
           <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/${locale}/checkout?productId=${product.id}&licenseType=${licenseType}&currency=${currency}`}
-              className="primary-btn text-sm"
-            >
-              {t.common.addToCart}
-            </Link>
+            <AddToCartButton
+              locale={locale}
+              productId={product.id}
+              licenseType={licenseType}
+              currency={currency}
+              label={t.common.addToCart}
+            />
             <Link href={`/${locale}/templates/${product.slug}`} className="secondary-btn text-sm">
               {t.common.details}
             </Link>

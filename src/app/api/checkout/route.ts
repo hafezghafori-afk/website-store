@@ -1,16 +1,31 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { recordAuditEvent } from "@/lib/audit";
 import { requireAppUser } from "@/lib/app-user";
 import { isClerkEnabled } from "@/lib/clerk-config";
 import { ensureProductInDatabase, getVariantAmount, getVariantForLicense } from "@/lib/catalog-db";
-import { BASE_CURRENCY, EUR_RATE, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
+import { BASE_CURRENCY, EUR_RATE, type LicenseType, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { getPaymentOptions } from "@/lib/payments";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
-import { checkoutSchema } from "@/lib/validators";
+import { checkoutCartSchema, checkoutSingleSchema } from "@/lib/validators";
 import { createZarinpalPaymentRequest, isZarinpalConfigured, toIrrAmount } from "@/lib/zarinpal";
 
 type CheckoutCurrency = "USD" | "EUR";
+
+type CheckoutInputItem = {
+  productId: string;
+  licenseType: LicenseType;
+};
+
+type PreparedCheckoutLine = {
+  productId: string;
+  productTitle: string;
+  licenseType: LicenseType;
+  variantId: string;
+  unitAmount: number;
+  finalAmount: number;
+};
 
 function localeFromCountry(country: string): Locale {
   const normalized = country.toUpperCase();
@@ -60,6 +75,67 @@ function getCouponDiscount(subtotal: number, coupon: { type: string; amount: num
   return Math.max(0, convertFixedDiscount(coupon.amount, fromCurrency, currency));
 }
 
+function dedupeCheckoutItems(items: CheckoutInputItem[]) {
+  const seen = new Set<string>();
+  const unique: CheckoutInputItem[] = [];
+
+  for (const item of items) {
+    const key = `${item.productId}:${item.licenseType}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(item);
+  }
+
+  return unique;
+}
+
+function distributeDiscount(lines: Omit<PreparedCheckoutLine, "finalAmount">[], totalDiscount: number): PreparedCheckoutLine[] {
+  if (totalDiscount <= 0) {
+    return lines.map((line) => ({ ...line, finalAmount: line.unitAmount }));
+  }
+
+  const subtotal = lines.reduce((acc, line) => acc + line.unitAmount, 0);
+  if (subtotal <= 0) {
+    return lines.map((line) => ({ ...line, finalAmount: line.unitAmount }));
+  }
+
+  const allocations = lines.map((line, index) => {
+    const raw = (line.unitAmount * totalDiscount) / subtotal;
+    const base = Math.floor(raw);
+    return {
+      index,
+      discount: base,
+      fraction: raw - base
+    };
+  });
+
+  let distributed = allocations.reduce((acc, item) => acc + item.discount, 0);
+  let remaining = Math.max(0, totalDiscount - distributed);
+
+  allocations.sort((a, b) => b.fraction - a.fraction);
+  let cursor = 0;
+  while (remaining > 0 && allocations.length > 0) {
+    allocations[cursor].discount += 1;
+    remaining -= 1;
+    cursor = (cursor + 1) % allocations.length;
+  }
+
+  const discountByIndex = new Map<number, number>();
+  for (const item of allocations) {
+    discountByIndex.set(item.index, item.discount);
+  }
+
+  return lines.map((line, index) => {
+    const lineDiscount = discountByIndex.get(index) ?? 0;
+    return {
+      ...line,
+      finalAmount: Math.max(0, line.unitAmount - lineDiscount)
+    };
+  });
+}
+
 export async function POST(request: Request) {
   let clerkUserId: string | null = null;
 
@@ -97,16 +173,47 @@ export async function POST(request: Request) {
 
   try {
     const json = await request.json();
-    const parsed = checkoutSchema.safeParse(json);
 
-    if (!parsed.success) {
+    const parsedCart = checkoutCartSchema.safeParse(json);
+    const parsedSingle = parsedCart.success ? null : checkoutSingleSchema.safeParse(json);
+
+    if (!parsedCart.success && (!parsedSingle || !parsedSingle.success)) {
       return NextResponse.json({ ok: false, message: "Invalid checkout payload." }, { status: 400 });
     }
 
-    const payload = parsed.data;
-    const product = await ensureProductInDatabase(payload.productId);
-    if (!product) {
-      return NextResponse.json({ ok: false, message: "Product not found." }, { status: 404 });
+    let payload: {
+      currency: CheckoutCurrency;
+      country: string;
+      provider: "stripe" | "zarinpal" | "manual-af";
+      couponCode?: string;
+    };
+    let requestItems: CheckoutInputItem[];
+
+    if (parsedCart.success) {
+      payload = {
+        currency: parsedCart.data.currency,
+        country: parsedCart.data.country,
+        provider: parsedCart.data.provider,
+        couponCode: parsedCart.data.couponCode
+      };
+      requestItems = parsedCart.data.items;
+    } else {
+      if (!parsedSingle || !parsedSingle.success) {
+        return NextResponse.json({ ok: false, message: "Invalid checkout payload." }, { status: 400 });
+      }
+      const single = parsedSingle.data;
+      payload = {
+        currency: single.currency,
+        country: single.country,
+        provider: single.provider,
+        couponCode: single.couponCode
+      };
+      requestItems = [{ productId: single.productId, licenseType: single.licenseType }];
+    }
+    const checkoutItems = dedupeCheckoutItems(requestItems);
+
+    if (checkoutItems.length === 0) {
+      return NextResponse.json({ ok: false, message: "No checkout items provided." }, { status: 400 });
     }
 
     const locale = localeFromCountry(payload.country);
@@ -126,16 +233,39 @@ export async function POST(request: Request) {
       );
     }
 
-    const variant = getVariantForLicense(product.variants, payload.licenseType);
-    if (!variant) {
-      return NextResponse.json({ ok: false, message: "Selected license is not available." }, { status: 400 });
+    const baseLines: Omit<PreparedCheckoutLine, "finalAmount">[] = [];
+    for (const item of checkoutItems) {
+      const product = await ensureProductInDatabase(item.productId);
+      if (!product) {
+        return NextResponse.json({ ok: false, message: `Product not found: ${item.productId}` }, { status: 404 });
+      }
+
+      const variant = getVariantForLicense(product.variants, item.licenseType);
+      if (!variant) {
+        return NextResponse.json(
+          { ok: false, message: `Selected license is not available for ${product.title}.` },
+          { status: 400 }
+        );
+      }
+
+      baseLines.push({
+        productId: product.id,
+        productTitle: product.title,
+        licenseType: item.licenseType,
+        variantId: variant.id,
+        unitAmount: getVariantAmount(variant, currency)
+      });
     }
 
-    const subtotal = getVariantAmount(variant, currency);
+    const subtotal = baseLines.reduce((acc, line) => acc + line.unitAmount, 0);
+    if (subtotal <= 0) {
+      return NextResponse.json({ ok: false, message: "Subtotal is invalid." }, { status: 400 });
+    }
+
     const couponCode = normalizeCouponCode(payload.couponCode);
     let couponId: string | null = null;
     let discount = 0;
-    let couponMeta: Record<string, unknown> | null = null;
+    let couponMeta: Prisma.JsonObject | null = null;
 
     if (couponCode) {
       const coupon = await prisma.coupon.findUnique({
@@ -169,7 +299,35 @@ export async function POST(request: Request) {
       };
     }
 
-    const amount = Math.max(1, subtotal - discount);
+    const checkoutLines = distributeDiscount(baseLines, discount);
+    const amount = checkoutLines.reduce((acc, line) => acc + line.finalAmount, 0);
+    if (amount <= 0) {
+      return NextResponse.json({ ok: false, message: "Checkout total must be greater than zero." }, { status: 400 });
+    }
+
+    const isMultiItemOrder = checkoutLines.length > 1;
+    const firstLine = checkoutLines[0];
+
+    const paymentMeta: Prisma.JsonObject = {
+      country: payload.country,
+      selectedCurrency: currency,
+      subtotal,
+      discount,
+      checkoutMode: isMultiItemOrder ? "cart" : "single",
+      itemCount: checkoutLines.length,
+      items: checkoutLines.map((line) => ({
+        productId: line.productId,
+        title: line.productTitle,
+        licenseType: line.licenseType,
+        unitAmount: line.unitAmount,
+        finalAmount: line.finalAmount
+      })),
+      ...couponMeta
+    };
+
+    if (!isMultiItemOrder) {
+      paymentMeta.licenseType = firstLine.licenseType;
+    }
 
     const order = await prisma.order.create({
       data: {
@@ -178,24 +336,17 @@ export async function POST(request: Request) {
         currency,
         status: "pending",
         items: {
-          create: {
-            productVariantId: variant.id,
-            price: amount,
+          create: checkoutLines.map((line) => ({
+            productVariantId: line.variantId,
+            price: line.finalAmount,
             currency
-          }
+          }))
         },
         payments: {
           create: {
             provider: payload.provider,
             status: "pending",
-            meta: {
-              country: payload.country,
-              selectedCurrency: currency,
-              licenseType: payload.licenseType,
-              subtotal,
-              discount,
-              ...couponMeta
-            }
+            meta: paymentMeta as Prisma.InputJsonValue
           }
         }
       },
@@ -218,8 +369,9 @@ export async function POST(request: Request) {
             data: {
               status: "failed",
               meta: {
+                ...paymentMeta,
                 reason: "Stripe not configured"
-              }
+              } as Prisma.InputJsonValue
             }
           }),
           prisma.order.update({
@@ -230,10 +382,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, message: "Stripe is not configured." }, { status: 500 });
       }
 
+      const productIds = checkoutLines.map((line) => line.productId).join(",");
+      const stripeProductName = isMultiItemOrder
+        ? `${checkoutLines.length} template items`
+        : `${firstLine.productTitle} (${firstLine.licenseType})`;
+
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         success_url: `${appUrl}/${locale}/dashboard?payment=success&orderId=${order.id}`,
-        cancel_url: `${appUrl}/${locale}/checkout?payment=cancelled&productId=${product.id}`,
+        cancel_url: isMultiItemOrder
+          ? `${appUrl}/${locale}/cart?payment=cancelled`
+          : `${appUrl}/${locale}/checkout?payment=cancelled&productId=${firstLine.productId}`,
         line_items: [
           {
             quantity: 1,
@@ -241,7 +400,7 @@ export async function POST(request: Request) {
               currency: currency.toLowerCase(),
               unit_amount: amount * 100,
               product_data: {
-                name: `${product.title} (${payload.licenseType})`
+                name: stripeProductName
               }
             }
           }
@@ -249,13 +408,15 @@ export async function POST(request: Request) {
         metadata: {
           orderId: order.id,
           paymentId: payment.id,
-          productId: product.id,
+          productId: isMultiItemOrder ? "" : firstLine.productId,
           appUserId: appUser.id,
-          licenseType: payload.licenseType,
+          licenseType: isMultiItemOrder ? "multiple" : firstLine.licenseType,
           provider: payload.provider,
           currency,
           couponId: couponId ?? "",
-          couponCode: couponCode ?? ""
+          couponCode: couponCode ?? "",
+          itemCount: String(checkoutLines.length),
+          productIds
         }
       });
 
@@ -264,14 +425,9 @@ export async function POST(request: Request) {
         data: {
           providerRef: session.id,
           meta: {
-            country: payload.country,
-            selectedCurrency: currency,
-            licenseType: payload.licenseType,
-            checkoutSessionId: session.id,
-            subtotal,
-            discount,
-            ...couponMeta
-          }
+            ...paymentMeta,
+            checkoutSessionId: session.id
+          } as Prisma.InputJsonValue
         }
       });
 
@@ -291,8 +447,9 @@ export async function POST(request: Request) {
             data: {
               status: "failed",
               meta: {
+                ...paymentMeta,
                 reason: "Zarinpal not configured"
-              }
+              } as Prisma.InputJsonValue
             }
           }),
           prisma.order.update({
@@ -305,7 +462,9 @@ export async function POST(request: Request) {
 
       const amountIrr = toIrrAmount(amount, currency);
       const callbackUrl = `${appUrl}/api/payments/zarinpal/callback?orderId=${order.id}&locale=${locale}`;
-      const description = `${product.title} (${payload.licenseType})`;
+      const description = isMultiItemOrder
+        ? `${firstLine.productTitle} + ${checkoutLines.length - 1} more items`
+        : `${firstLine.productTitle} (${firstLine.licenseType})`;
       const requestResult = await createZarinpalPaymentRequest({
         amountIrr,
         callbackUrl,
@@ -320,15 +479,10 @@ export async function POST(request: Request) {
             data: {
               status: "failed",
               meta: {
-                country: payload.country,
-                selectedCurrency: currency,
-                licenseType: payload.licenseType,
-                subtotal,
-                discount,
+                ...paymentMeta,
                 zarinpalErrorCode: requestResult.code ?? null,
-                zarinpalErrorMessage: requestResult.message ?? "Request failed.",
-                ...couponMeta
-              }
+                zarinpalErrorMessage: requestResult.message ?? "Request failed."
+              } as Prisma.InputJsonValue
             }
           }),
           prisma.order.update({
@@ -348,10 +502,13 @@ export async function POST(request: Request) {
           }
         });
 
-        return NextResponse.json({
-          ok: false,
-          message: requestResult.message ?? "Could not initialize Zarinpal payment."
-        }, { status: 502 });
+        return NextResponse.json(
+          {
+            ok: false,
+            message: requestResult.message ?? "Could not initialize Zarinpal payment."
+          },
+          { status: 502 }
+        );
       }
 
       await prisma.payment.update({
@@ -359,16 +516,11 @@ export async function POST(request: Request) {
         data: {
           providerRef: requestResult.authority,
           meta: {
-            country: payload.country,
-            selectedCurrency: currency,
-            licenseType: payload.licenseType,
-            subtotal,
-            discount,
+            ...paymentMeta,
             zarinpalAmountIrr: amountIrr,
             zarinpalAuthority: requestResult.authority,
-            zarinpalRequestCode: requestResult.code ?? null,
-            ...couponMeta
-          }
+            zarinpalRequestCode: requestResult.code ?? null
+          } as Prisma.InputJsonValue
         }
       });
 
@@ -379,7 +531,8 @@ export async function POST(request: Request) {
         targetId: order.id,
         details: {
           authority: requestResult.authority,
-          amountIrr
+          amountIrr,
+          itemCount: checkoutLines.length
         }
       });
 
@@ -398,7 +551,7 @@ export async function POST(request: Request) {
         discount > 0
           ? "Coupon applied. Manual payment selected. Upload transfer receipt for admin approval."
           : "Manual payment selected. Upload transfer receipt for admin approval.",
-      redirectUrl: `${appUrl}/${locale}/dashboard?payment=manual`
+      redirectUrl: `${appUrl}/${locale}/dashboard?payment=pending&provider=manual-af&orderId=${order.id}`
     });
   } catch (error) {
     return NextResponse.json(

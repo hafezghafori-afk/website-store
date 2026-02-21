@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/audit";
 import { grantDownloadTokensForOrder } from "@/lib/download-entitlement";
+import { sendPaidOrderEmail } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 
@@ -83,6 +84,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           }
         }
       });
+    }
+
+    const emailResult = await sendPaidOrderEmail({
+      orderId,
+      provider: "stripe"
+    });
+    if (!emailResult.ok && !emailResult.skipped) {
+      console.error("[stripe-webhook] failed to send paid order email", emailResult.reason);
     }
   }
 

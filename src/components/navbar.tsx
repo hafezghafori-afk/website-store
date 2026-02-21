@@ -21,6 +21,10 @@ export function Navbar({ locale }: NavbarProps) {
         <nav className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
           <Link href={`/${locale}/templates`}>{t.nav.templates}</Link>
           <Link href={`/${locale}/templates?type=bundle`}>{t.nav.bundles}</Link>
+          <Link href={`/${locale}/pricing`}>Pricing</Link>
+          <Link href={`/${locale}/blog`}>Blog</Link>
+          <Link href={`/${locale}/faq`}>FAQ</Link>
+          <Link href={`/${locale}/contact`}>Contact</Link>
           <Link href={`/${locale}/docs`}>{t.nav.docs}</Link>
           <Link href={`/${locale}/support`}>{t.nav.support}</Link>
         </nav>
@@ -40,7 +44,7 @@ export function Navbar({ locale }: NavbarProps) {
           <Link href={`/${locale}/login`} className="secondary-btn text-sm">
             {t.nav.login}
           </Link>
-          <Link href={`/${locale}/checkout`} className="primary-btn text-sm">
+          <Link href={`/${locale}/cart`} className="primary-btn text-sm">
             {t.nav.cart}
           </Link>
         </div>

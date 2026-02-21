@@ -4,6 +4,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { requireAppUser } from "@/lib/app-user";
 import { grantDownloadTokensForOrder } from "@/lib/download-entitlement";
 import { isClerkEnabled } from "@/lib/clerk-config";
+import { sendPaidOrderEmail } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { isAdminUser } from "@/lib/server-auth";
 
@@ -188,6 +189,14 @@ export async function POST(request: Request) {
           }
         }
       });
+    }
+
+    const emailResult = await sendPaidOrderEmail({
+      orderId: order.id,
+      provider: "manual-af"
+    });
+    if (!emailResult.ok && !emailResult.skipped) {
+      console.error("[admin-manual-review] failed to send paid order email", emailResult.reason);
     }
 
     await recordAuditEvent({

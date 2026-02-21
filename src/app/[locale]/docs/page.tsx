@@ -37,7 +37,7 @@ export default function DocsPage() {
           <p><code>GET /api/products</code> list with filters</p>
           <p><code>GET /api/products?type=bundle</code> list only bundles</p>
           <p><code>GET /api/products/:slug</code> product details</p>
-          <p><code>POST /api/checkout</code> create order and payment session</p>
+          <p><code>POST /api/checkout</code> create order and payment session (single or cart items[])</p>
           <p><code>GET /api/payments/zarinpal/callback</code> zarinpal callback + verification</p>
           <p><code>POST /api/download</code> return signed download URL after entitlement checks</p>
           <p><code>POST /api/payments/manual-receipt</code> submit manual transfer reference</p>

@@ -4,9 +4,7 @@ import type { PaymentProvider } from "@/lib/types";
 
 const providerValues: PaymentProvider[] = ["stripe", "zarinpal", "manual-af"];
 
-export const checkoutSchema = z.object({
-  productId: z.string().min(1),
-  licenseType: z.enum(LICENSE_TYPES),
+const checkoutBaseSchema = z.object({
   currency: z.enum(SUPPORTED_CURRENCIES).default(BASE_CURRENCY),
   country: z
     .string()
@@ -22,6 +20,22 @@ export const checkoutSchema = z.object({
     .regex(/^[A-Za-z0-9_-]+$/)
     .optional()
 });
+
+export const checkoutItemSchema = z.object({
+  productId: z.string().min(1),
+  licenseType: z.enum(LICENSE_TYPES)
+});
+
+export const checkoutSingleSchema = checkoutBaseSchema.extend({
+  productId: z.string().min(1),
+  licenseType: z.enum(LICENSE_TYPES)
+});
+
+export const checkoutCartSchema = checkoutBaseSchema.extend({
+  items: z.array(checkoutItemSchema).min(1).max(30)
+});
+
+export const checkoutSchema = z.union([checkoutSingleSchema, checkoutCartSchema]);
 
 export const downloadSchema = z.object({
   productId: z.string().min(1)

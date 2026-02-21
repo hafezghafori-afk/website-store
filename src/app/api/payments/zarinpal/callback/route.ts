@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/audit";
 import { grantDownloadTokensForOrder } from "@/lib/download-entitlement";
 import { BASE_CURRENCY, DEFAULT_LOCALE, LOCALES } from "@/lib/constants";
+import { sendPaidOrderEmail } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { toIrrAmount, verifyZarinpalPayment } from "@/lib/zarinpal";
 
@@ -220,6 +221,14 @@ export async function GET(request: Request) {
           }
         }
       });
+    }
+
+    const emailResult = await sendPaidOrderEmail({
+      orderId: order.id,
+      provider: "zarinpal"
+    });
+    if (!emailResult.ok && !emailResult.skipped) {
+      console.error("[zarinpal-callback] failed to send paid order email", emailResult.reason);
     }
   }
 

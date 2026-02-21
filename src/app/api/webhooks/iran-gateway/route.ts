@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { recordAuditEvent } from "@/lib/audit";
 import { grantDownloadTokensForOrder } from "@/lib/download-entitlement";
+import { sendPaidOrderEmail } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 
 function normalizeSignature(input: string) {
@@ -129,6 +130,14 @@ export async function POST(request: Request) {
               }
             }
           });
+        }
+
+        const emailResult = await sendPaidOrderEmail({
+          orderId,
+          provider: "iran-gateway"
+        });
+        if (!emailResult.ok && !emailResult.skipped) {
+          console.error("[iran-webhook] failed to send paid order email", emailResult.reason);
         }
       }
     } else {
