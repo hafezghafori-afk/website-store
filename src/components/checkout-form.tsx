@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Currency, LicenseType } from "@/lib/constants";
+import { COUNTRY_OPTIONS } from "@/lib/countries";
 import { getPaymentOptions } from "@/lib/payments";
 
 type CheckoutFormProps = {
@@ -21,6 +22,13 @@ type CheckoutResult = {
 
 export function CheckoutForm({ locale, productId, licenseType, currency, initialCountry }: CheckoutFormProps) {
   const [country, setCountry] = useState(initialCountry.toUpperCase());
+  const countryOptions = useMemo(() => {
+    const exists = COUNTRY_OPTIONS.some((item) => item.code === country);
+    if (exists) {
+      return COUNTRY_OPTIONS;
+    }
+    return [{ code: country, name: country }, ...COUNTRY_OPTIONS];
+  }, [country]);
   const options = useMemo(() => getPaymentOptions(country, currency).filter((item) => item.enabled), [country, currency]);
   const [provider, setProvider] = useState(options[0]?.provider ?? "stripe");
   const [couponCode, setCouponCode] = useState("");
@@ -81,10 +89,11 @@ export function CheckoutForm({ locale, productId, licenseType, currency, initial
           onChange={(event) => setCountry(event.target.value.toUpperCase())}
           className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm"
         >
-          <option value="US">United States</option>
-          <option value="DE">Germany</option>
-          <option value="IR">Iran</option>
-          <option value="AF">Afghanistan</option>
+          {countryOptions.map((item) => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
         </select>
       </div>
 

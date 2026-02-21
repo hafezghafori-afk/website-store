@@ -8,27 +8,13 @@ export type PaymentOption = {
   enabled: boolean;
 };
 
-function hasValidStripePublishableKey() {
-  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
-  if (!key) {
-    return false;
-  }
-
-  const normalized = key.toLowerCase();
-  if (
-    normalized.includes("xxx") ||
-    normalized.includes("example") ||
-    normalized.includes("your_")
-  ) {
-    return false;
-  }
-
-  return key.startsWith("pk_test_") || key.startsWith("pk_live_");
+function supportsStripeCurrency(currency: Currency) {
+  return currency === "USD" || currency === "EUR";
 }
 
 export function getPaymentOptions(countryCode: string, currency: Currency): PaymentOption[] {
   const country = countryCode.toUpperCase();
-  const stripeEnabled = (currency === "USD" || currency === "EUR") && hasValidStripePublishableKey();
+  const stripeEnabled = supportsStripeCurrency(currency);
 
   if (country === "IR") {
     return [
@@ -64,23 +50,12 @@ export function getPaymentOptions(countryCode: string, currency: Currency): Paym
     ];
   }
 
-  if (stripeEnabled) {
-    return [
-      {
-        provider: "stripe",
-        label: "Stripe",
-        description: "Cards, Apple Pay, and Google Pay.",
-        enabled: true
-      }
-    ];
-  }
-
   return [
     {
-      provider: "manual-af",
-      label: "Manual Transfer",
-      description: "Fallback option: submit transfer receipt for admin verification.",
-      enabled: true
+      provider: "stripe",
+      label: "Stripe",
+      description: "Cards, Apple Pay, and Google Pay.",
+      enabled: stripeEnabled
     }
   ];
 }

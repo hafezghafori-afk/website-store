@@ -7,6 +7,7 @@ import { CheckoutSummary } from "@/components/checkout-summary";
 import { Container } from "@/components/container";
 import { requireAppUser } from "@/lib/app-user";
 import { isClerkEnabled } from "@/lib/clerk-config";
+import { COUNTRY_OPTIONS } from "@/lib/countries";
 import { BASE_CURRENCY, type Currency, type LicenseType, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { getCurrentUserId } from "@/lib/server-auth";
 
@@ -39,6 +40,9 @@ export default async function CheckoutPage({
   const currency = resolveCurrency(searchParams.currency ?? appUser?.preferredCurrency);
   const licenseType = resolveLicense(searchParams.licenseType);
   const country = (searchParams.country ?? appUser?.country ?? "US").toUpperCase();
+  const countryOptions = COUNTRY_OPTIONS.some((item) => item.code === country)
+    ? COUNTRY_OPTIONS
+    : [{ code: country, name: country }, ...COUNTRY_OPTIONS];
   const products = await getStoreProducts();
   const productId = searchParams.productId ?? products[0]?.id;
 
@@ -85,10 +89,11 @@ export default async function CheckoutPage({
         <div className="space-y-1.5">
           <label className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Country</label>
           <select name="country" defaultValue={country} className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm">
-            <option value="US">United States</option>
-            <option value="DE">Germany</option>
-            <option value="IR">Iran</option>
-            <option value="AF">Afghanistan</option>
+            {countryOptions.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.name}
+              </option>
+            ))}
           </select>
         </div>
 
