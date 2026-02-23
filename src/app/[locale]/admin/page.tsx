@@ -1,5 +1,7 @@
 ﻿import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
+import { AdminControlCenter } from "@/components/admin-control-center";
+import { AdminRouteNav } from "@/components/admin-route-nav";
 import { Container } from "@/components/container";
 import { isClerkEnabled } from "@/lib/clerk-config";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +12,13 @@ function formatDate(value: Date) {
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short"
+  }).format(value);
+}
+
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1
   }).format(value);
 }
 
@@ -87,6 +96,21 @@ export default async function AdminPage({ params }: { params: { locale: string }
             email: true
           }
         },
+        items: {
+          include: {
+            productVariant: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    slug: true,
+                    title: true
+                  }
+                }
+              }
+            }
+          }
+        },
         payments: {
           orderBy: { createdAt: "desc" },
           take: 1
@@ -161,12 +185,230 @@ export default async function AdminPage({ params }: { params: { locale: string }
     })
   ]);
 
+  const recentPaidOrders = orders.filter((order) => order.status === "paid");
+  const recentPendingOrders = orders.filter((order) => order.status === "pending");
+  const recentFailedOrders = orders.filter((order) => order.status === "failed" || order.status === "cancelled");
+  const publishedProducts = products.filter((product) => product.status === "published");
+  const bundleProducts = products.filter((product) => product.isBundle);
+  const openSupportTickets = supportTickets.filter((ticket) => ticket.status === "open" || ticket.status === "in_progress");
+  const activeCoupons = coupons.filter((coupon) => coupon.isActive);
+
+  const recentRevenue = orders.reduce(
+    (acc, order) => {
+      if (order.status !== "paid") {
+        return acc;
+      }
+      if (order.currency === "EUR") {
+        acc.EUR += order.total;
+      } else {
+        acc.USD += order.total;
+      }
+      return acc;
+    },
+    { USD: 0, EUR: 0 }
+  );
+
+  const manualReviewQueue = orders
+    .map((order) => {
+      const latestPayment = order.payments[0];
+      const paymentMeta =
+        latestPayment?.meta && typeof latestPayment.meta === "object" && !Array.isArray(latestPayment.meta)
+          ? (latestPayment.meta as Record<string, unknown>)
+          : {};
+      const manualReceipt =
+        paymentMeta.manualReceipt && typeof paymentMeta.manualReceipt === "object" && !Array.isArray(paymentMeta.manualReceipt)
+          ? (paymentMeta.manualReceipt as Record<string, unknown>)
+          : null;
+      const submittedAt = typeof manualReceipt?.submittedAt === "string" ? manualReceipt.submittedAt : null;
+      const hasReceipt = Boolean(manualReceipt);
+      const isPendingManual = latestPayment?.provider === "manual-af" && latestPayment.status === "pending";
+      if (!isPendingManual) {
+        return null;
+      }
+      return {
+        id: order.id,
+        title: `${order.total} ${order.currency} - ${order.user.email}`,
+        subtitle: `Order ${order.id.slice(0, 12)}...`,
+        status: "pending",
+        note: hasReceipt
+          ? `Receipt submitted${submittedAt ? ` (${submittedAt})` : ""}`
+          : "Waiting for customer receipt upload",
+        href: "#ops-orders-users",
+        tone: "warn" as const
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .slice(0, 6);
+
+  const supportQueue = openSupportTickets.slice(0, 6).map((ticket) => ({
+    id: ticket.id,
+    title: ticket.subject,
+    subtitle: ticket.user?.email ?? ticket.email,
+    status: ticket.status,
+    note: `${ticket.replies.length} repl${ticket.replies.length === 1 ? "y" : "ies"} · ${formatDate(ticket.createdAt)}`,
+    href: "#support-tickets",
+    tone: ticket.status === "open" ? ("warn" as const) : ("brand" as const)
+  }));
+
+  const last7Days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return date;
+  });
+  const salesPointMap = new Map(
+    last7Days.map((date) => [date.toISOString().slice(0, 10), { orders: 0, paidOrders: 0, label: `${date.getMonth() + 1}/${date.getDate()}` }])
+  );
+
+  for (const order of orders) {
+    const dateKey = new Date(order.createdAt);
+    dateKey.setHours(0, 0, 0, 0);
+    const key = dateKey.toISOString().slice(0, 10);
+    const bucket = salesPointMap.get(key);
+    if (!bucket) {
+      continue;
+    }
+    bucket.orders += 1;
+    if (order.status === "paid") {
+      bucket.paidOrders += 1;
+    }
+  }
+
+  const salesPoints = Array.from(salesPointMap.values());
+
+  const topProductMap = new Map<string, { title: string; orderItems: number; paidUsd: number; paidEur: number }>();
+  for (const order of recentPaidOrders) {
+    for (const item of order.items) {
+      const key = item.productVariant.product.id;
+      const existing = topProductMap.get(key) ?? {
+        title: item.productVariant.product.title,
+        orderItems: 0,
+        paidUsd: 0,
+        paidEur: 0
+      };
+      existing.orderItems += 1;
+      if (order.currency === "EUR") {
+        existing.paidEur += item.price;
+      } else {
+        existing.paidUsd += item.price;
+      }
+      topProductMap.set(key, existing);
+    }
+  }
+  const topProducts = Array.from(topProductMap.values())
+    .sort((a, b) => b.orderItems - a.orderItems || b.paidUsd + b.paidEur - (a.paidUsd + a.paidEur))
+    .slice(0, 5);
+
+  const expiringCouponsSoon = coupons.filter((coupon) => {
+    if (!coupon.expiresAt) {
+      return false;
+    }
+    const diff = coupon.expiresAt.getTime() - Date.now();
+    return diff > 0 && diff <= 1000 * 60 * 60 * 24 * 7;
+  }).length;
+  const highUsageCoupons = coupons.filter((coupon) => {
+    if (!coupon.maxUses || coupon.maxUses <= 0) {
+      return false;
+    }
+    return coupon.usedCount / coupon.maxUses >= 0.8;
+  }).length;
+
+  const productsWithNoVersions = products.filter((product) => product.versions.length === 0).length;
+  const recentDownloadLogs = logs.filter((log) => Date.now() - log.createdAt.getTime() <= 1000 * 60 * 60 * 24 * 7).length;
+  const recentAuditWrites = auditEvents.filter((event) => Date.now() - event.createdAt.getTime() <= 1000 * 60 * 60 * 24).length;
+
+  const kpis = [
+    {
+      label: "Products",
+      value: formatCompactNumber(products.length),
+      hint: `${publishedProducts.length} published · ${bundleProducts.length} bundles`,
+      tone: "brand" as const
+    },
+    {
+      label: "Orders (Recent)",
+      value: formatCompactNumber(orders.length),
+      hint: `${recentPaidOrders.length} paid · ${recentPendingOrders.length} pending · ${recentFailedOrders.length} failed`,
+      tone: recentPendingOrders.length > 0 ? ("warn" as const) : ("neutral" as const)
+    },
+    {
+      label: "Revenue USD",
+      value: `${formatCompactNumber(recentRevenue.USD)} USD`,
+      hint: "Recent admin scope",
+      tone: "success" as const
+    },
+    {
+      label: "Revenue EUR",
+      value: `${formatCompactNumber(recentRevenue.EUR)} EUR`,
+      hint: "Recent admin scope",
+      tone: "success" as const
+    },
+    {
+      label: "Users (Recent)",
+      value: formatCompactNumber(users.length),
+      hint: `${users.filter((user) => user._count.orders > 0).length} with orders`,
+      tone: "neutral" as const
+    },
+    {
+      label: "Manual Review Queue",
+      value: formatCompactNumber(manualReviewQueue.length),
+      hint: "Pending receipt verification",
+      tone: manualReviewQueue.length > 0 ? ("warn" as const) : ("success" as const)
+    },
+    {
+      label: "Support Queue",
+      value: formatCompactNumber(openSupportTickets.length),
+      hint: `${supportTickets.filter((ticket) => ticket.status === "resolved").length} resolved in current list`,
+      tone: openSupportTickets.length > 0 ? ("warn" as const) : ("success" as const)
+    },
+    {
+      label: "Audit Activity",
+      value: formatCompactNumber(auditEvents.length),
+      hint: `${recentAuditWrites} events in last 24h`,
+      tone: "neutral" as const
+    }
+  ];
+
+  const healthCards = [
+    {
+      title: "Catalog Health",
+      tone: productsWithNoVersions > 0 ? ("warn" as const) : ("success" as const),
+      lines: [
+        `${products.length} total products`,
+        `${publishedProducts.length} published / ${products.filter((product) => product.status === "draft").length} draft`,
+        `${versions.length} recent version entries shown`,
+        `${productsWithNoVersions} products without uploaded versions`
+      ]
+    },
+    {
+      title: "Coupons & Campaigns",
+      tone: activeCoupons.length > 0 ? ("brand" as const) : ("neutral" as const),
+      lines: [
+        `${coupons.length} coupons total`,
+        `${activeCoupons.length} active coupons`,
+        `${expiringCouponsSoon} expiring within 7 days`,
+        `${highUsageCoupons} near usage cap (>=80%)`
+      ]
+    },
+    {
+      title: "Security & Delivery",
+      tone: "neutral" as const,
+      lines: [
+        `${logs.length} recent download logs shown`,
+        `${recentDownloadLogs} download logs in last 7 days`,
+        `${auditEvents.length} recent audit events shown`,
+        `${manualReviewQueue.length} manual receipts pending review`
+      ]
+    }
+  ];
+
   return (
     <Container className="space-y-8 py-10 sm:py-14">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.12em] text-brand-600">Back Office</p>
         <h1 className="mt-1 text-3xl font-black tracking-tight">Admin Panel</h1>
       </div>
+
+      <AdminRouteNav locale={params.locale} active="overview" />
 
       {!clerkEnabled ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -176,7 +418,17 @@ export default async function AdminPage({ params }: { params: { locale: string }
 
       <iframe name="admin-action-frame" className="hidden" title="admin-action-frame" />
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <AdminControlCenter
+        locale={params.locale}
+        kpis={kpis}
+        salesPoints={salesPoints}
+        topProducts={topProducts}
+        manualReviewQueue={manualReviewQueue}
+        supportQueue={supportQueue}
+        healthCards={healthCards}
+      />
+
+      <section id="catalog-create" className="grid scroll-mt-24 gap-6 lg:grid-cols-2">
         <article className="surface-card space-y-4 p-5">
           <h2 className="text-lg font-bold">Create Product</h2>
           <form action="/api/admin/products" method="post" target="admin-action-frame" className="space-y-3">
@@ -235,7 +487,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </article>
       </section>
 
-      <section className="surface-card overflow-x-auto p-5">
+      <section id="catalog-products" className="surface-card scroll-mt-24 overflow-x-auto p-5">
         <h2 className="text-lg font-bold">Products (CRUD)</h2>
         <table className="mt-4 min-w-full text-sm">
           <thead>
@@ -335,7 +587,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </table>
       </section>
 
-      <section className="surface-card overflow-x-auto p-5">
+      <section id="catalog-versions" className="surface-card scroll-mt-24 overflow-x-auto p-5">
         <h2 className="text-lg font-bold">Recent Versions</h2>
         <table className="mt-4 min-w-full text-sm">
           <thead>
@@ -359,7 +611,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </table>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section id="ops-orders-users" className="grid scroll-mt-24 gap-6 lg:grid-cols-2">
         <article className="surface-card overflow-x-auto p-5">
           <h2 className="text-lg font-bold">Orders</h2>
           <table className="mt-4 min-w-full text-sm">
@@ -507,7 +759,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </article>
       </section>
 
-      <section className="surface-card overflow-x-auto p-5">
+      <section id="logs-downloads" className="surface-card scroll-mt-24 overflow-x-auto p-5">
         <h2 className="text-lg font-bold">Download Logs</h2>
         <table className="mt-4 min-w-full text-sm">
           <thead>
@@ -533,7 +785,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </table>
       </section>
 
-      <section className="surface-card overflow-x-auto p-5">
+      <section id="logs-audit" className="surface-card scroll-mt-24 overflow-x-auto p-5">
         <h2 className="text-lg font-bold">Audit Events</h2>
         <table className="mt-4 min-w-full text-sm">
           <thead>
@@ -564,7 +816,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </table>
       </section>
 
-      <section className="surface-card space-y-4 p-5">
+      <section id="marketing-coupons" className="surface-card scroll-mt-24 space-y-4 p-5">
         <h2 className="text-lg font-bold">Coupons</h2>
 
         <form action="/api/admin/coupons" method="post" target="admin-action-frame" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-8">
@@ -650,7 +902,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
         </table>
       </section>
 
-      <section className="surface-card overflow-x-auto p-5">
+      <section id="support-tickets" className="surface-card scroll-mt-24 overflow-x-auto p-5">
         <h2 className="text-lg font-bold">Support Tickets</h2>
         <table className="mt-4 min-w-full text-sm">
           <thead>
