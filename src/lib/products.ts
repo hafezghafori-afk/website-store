@@ -21,6 +21,7 @@ export function getPriceLabel(product: Product, licenseType: LicenseType, curren
 
 export function filterProducts(products: Product[], query: {
   search?: string;
+  category?: string;
   tech?: string;
   rtl?: string;
   type?: string;
@@ -42,6 +43,10 @@ export function filterProducts(products: Product[], query: {
     }
 
     if (query.tech && query.tech !== "all" && !item.tech.some((t) => t.toLowerCase() === query.tech?.toLowerCase())) {
+      return false;
+    }
+
+    if (query.category && query.category !== "all" && item.category !== query.category) {
       return false;
     }
 
@@ -86,4 +91,8 @@ export function filterProducts(products: Product[], query: {
 
 export function extractFilterOptions(products: Product[]) {
   return Array.from(new Set(products.flatMap((item) => item.tech))).sort((a, b) => a.localeCompare(b));
+}
+
+export function extractCategoryOptions(products: Product[]) {
+  return Array.from(new Set(products.map((item) => item.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 }

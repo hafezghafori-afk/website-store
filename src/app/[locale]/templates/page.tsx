@@ -4,10 +4,10 @@ import { EmptyState } from "@/components/empty-state";
 import { FiltersDrawer } from "@/components/filters-drawer";
 import { FiltersPanel } from "@/components/filters-panel";
 import { ProductCard } from "@/components/product-card";
-import { getStoreProducts } from "@/lib/catalog";
+import { getStoreCategories, getStoreProducts } from "@/lib/catalog";
 import { BASE_CURRENCY, type Currency, type LicenseType, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { getDictionary } from "@/lib/i18n";
-import { extractFilterOptions, filterProducts } from "@/lib/products";
+import { extractCategoryOptions, extractFilterOptions, filterProducts } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +42,7 @@ export default async function TemplatesPage({
   const t = getDictionary(locale);
 
   const search = getSingleValue(searchParams.search);
+  const category = getSingleValue(searchParams.category);
   const tech = getSingleValue(searchParams.tech);
   const rtl = getSingleValue(searchParams.rtl);
   const type = getSingleValue(searchParams.type);
@@ -50,10 +51,11 @@ export default async function TemplatesPage({
   const sort = getSingleValue(searchParams.sort) ?? "new";
   const currency = resolveCurrency(getSingleValue(searchParams.currency));
   const licenseType = resolveLicense(getSingleValue(searchParams.licenseType));
-  const products = await getStoreProducts();
+  const [products, storeCategories] = await Promise.all([getStoreProducts(), getStoreCategories()]);
 
   const filtered = filterProducts(products, {
     search,
+    category,
     type,
     tech,
     rtl,
@@ -65,6 +67,10 @@ export default async function TemplatesPage({
   });
 
   const techOptions = extractFilterOptions(products);
+  const availableCategorySlugs = new Set(extractCategoryOptions(products));
+  const categoryOptions = storeCategories
+    .filter((item) => availableCategorySlugs.has(item.slug))
+    .map((item) => ({ slug: item.slug, title: item.title }));
 
   return (
     <Container className="py-10 sm:py-14">
@@ -91,6 +97,7 @@ export default async function TemplatesPage({
           <form className="flex flex-wrap gap-2">
             <input type="hidden" name="type" value={type ?? ""} />
             <input type="hidden" name="search" value={search ?? ""} />
+            <input type="hidden" name="category" value={category ?? "all"} />
             <input type="hidden" name="tech" value={tech ?? "all"} />
             <input type="hidden" name="rtl" value={rtl ?? "all"} />
             <input type="hidden" name="sort" value={sort} />
@@ -110,6 +117,7 @@ export default async function TemplatesPage({
 
         <form className="surface-card flex flex-wrap items-center gap-2 p-3">
           <input type="hidden" name="type" value={type ?? ""} />
+          <input type="hidden" name="category" value={category ?? "all"} />
           <input type="hidden" name="tech" value={tech ?? "all"} />
           <input type="hidden" name="rtl" value={rtl ?? "all"} />
           <input type="hidden" name="min" value={min ?? ""} />
@@ -133,13 +141,19 @@ export default async function TemplatesPage({
         <FiltersDrawer
           locale={locale}
           currency={currency}
-          options={{ type, search, tech, rtl, min, max, sort, techs: techOptions }}
+          licenseType={licenseType}
+          options={{ type, search, category, tech, rtl, min, max, sort, techs: techOptions, categories: categoryOptions }}
         />
       </div>
 
       <div className="grid gap-6 md:grid-cols-[280px_1fr]">
         <div className="hidden md:block">
-          <FiltersPanel locale={locale} currency={currency} options={{ type, search, tech, rtl, min, max, sort, techs: techOptions }} />
+          <FiltersPanel
+            locale={locale}
+            currency={currency}
+            licenseType={licenseType}
+            options={{ type, search, category, tech, rtl, min, max, sort, techs: techOptions, categories: categoryOptions }}
+          />
         </div>
 
         {filtered.length === 0 ? (

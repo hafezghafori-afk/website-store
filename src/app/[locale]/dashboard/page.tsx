@@ -1,13 +1,15 @@
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
+import { AccountRouteNav } from "@/components/account-route-nav";
 import { Container } from "@/components/container";
+import { DashboardPaymentStatusAlert } from "@/components/dashboard-payment-status-alert";
 import { ApiKeysManager } from "@/components/api-keys-manager";
 import { DownloadButton } from "@/components/download-button";
 import { EmptyState } from "@/components/empty-state";
 import { ManualReceiptForm } from "@/components/manual-receipt-form";
 import { ProfileBillingForm } from "@/components/profile-billing-form";
 import { requireAppUser } from "@/lib/app-user";
-import { prisma } from "@/lib/prisma";
+import { getDashboardApiKeys, getDashboardDownloadables, getDashboardOrders } from "@/lib/account-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -25,83 +27,11 @@ export default async function DashboardPage({
     redirect(`/${params.locale}/login`);
   }
 
-  const orders = await prisma.order.findMany({
-    where: {
-      userId: appUser.id
-    },
-    orderBy: {
-      createdAt: "desc"
-    },
-    include: {
-      items: {
-        include: {
-          productVariant: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  slug: true,
-                  title: true
-                }
-              }
-            }
-          }
-        }
-      },
-      payments: {
-        orderBy: { createdAt: "desc" },
-        take: 1
-      }
-    }
-  });
-
-  const now = new Date();
-  const activeTokens = await prisma.downloadToken.findMany({
-    where: {
-      userId: appUser.id,
-      expiresAt: {
-        gt: now
-      }
-    },
-    orderBy: {
-      createdAt: "desc"
-    },
-    include: {
-      product: {
-        select: {
-          id: true,
-          slug: true,
-          title: true
-        }
-      }
-    }
-  });
-
-  const tokenMap = new Map<string, (typeof activeTokens)[number]>();
-  for (const token of activeTokens) {
-    if (!tokenMap.has(token.productId)) {
-      tokenMap.set(token.productId, token);
-    }
-  }
-
-  const downloadableProducts = Array.from(tokenMap.values());
-  const apiKeys = await prisma.apiKey.findMany({
-    where: {
-      userId: appUser.id
-    },
-    orderBy: {
-      createdAt: "desc"
-    },
-    select: {
-      id: true,
-      name: true,
-      keyPrefix: true,
-      isActive: true,
-      lastUsedAt: true,
-      revokedAt: true,
-      createdAt: true
-    }
-  });
+  const [orders, downloadableProducts, apiKeys] = await Promise.all([
+    getDashboardOrders(appUser.id),
+    getDashboardDownloadables(appUser.id),
+    getDashboardApiKeys(appUser.id)
+  ]);
   const paymentStatus = searchParams.payment?.toLowerCase() ?? "";
   const paymentProvider = searchParams.provider?.toLowerCase() ?? "";
 
@@ -112,29 +42,9 @@ export default async function DashboardPage({
         <h1 className="mt-1 text-3xl font-black tracking-tight">Dashboard</h1>
       </div>
 
-      {paymentStatus === "success" ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-          Payment confirmed. Your downloads are now available.
-        </div>
-      ) : null}
+      <AccountRouteNav locale={params.locale} active="overview" />
 
-      {paymentStatus === "pending" ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          Payment is pending verification{paymentProvider ? ` (${paymentProvider})` : ""}. You can submit receipt details below for manual review.
-        </div>
-      ) : null}
-
-      {paymentStatus === "cancelled" ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-          Payment was cancelled{paymentProvider ? ` (${paymentProvider})` : ""}. You can retry checkout anytime.
-        </div>
-      ) : null}
-
-      {paymentStatus === "failed" ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Payment failed{paymentProvider ? ` (${paymentProvider})` : ""}. Please retry checkout or contact support.
-        </div>
-      ) : null}
+      <DashboardPaymentStatusAlert paymentStatus={paymentStatus} paymentProvider={paymentProvider} />
 
       <section className="space-y-4">
         <h2 className="text-xl font-black tracking-tight">Orders</h2>

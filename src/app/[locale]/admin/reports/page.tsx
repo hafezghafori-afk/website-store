@@ -1,4 +1,5 @@
 import { unstable_noStore as noStore } from "next/cache";
+import Link from "next/link";
 import { AdminRouteNav } from "@/components/admin-route-nav";
 import { Container } from "@/components/container";
 import { ensureAdminAccess } from "@/lib/admin-access";
@@ -74,6 +75,14 @@ export default async function AdminReportsPage({
 
   const fromDate = parseDateStart(fromRaw) ?? defaultFrom;
   const toDate = parseDateEnd(toRaw) ?? defaultTo;
+  const exportParams = new URLSearchParams({
+    days: String(days),
+    status,
+    currency,
+    provider,
+    from: fromRaw || dateInputValue(fromDate),
+    to: toRaw || dateInputValue(toDate)
+  });
 
   const where: any = {
     createdAt: {
@@ -258,6 +267,12 @@ export default async function AdminReportsPage({
       </div>
 
       <AdminRouteNav locale={params.locale} active="reports" />
+
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/api/admin/reports/export?${exportParams.toString()}`} className="secondary-btn text-sm">
+          Export CSV
+        </Link>
+      </div>
 
       <form className="surface-card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-8">
         <select name="days" defaultValue={String(days)} className="rounded-xl border border-border bg-white px-3 py-2 text-sm">

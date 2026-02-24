@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { Currency, Locale } from "@/lib/constants";
+import type { Currency, LicenseType, Locale } from "@/lib/constants";
 import { FiltersPanel } from "@/components/filters-panel";
 
 type FiltersDrawerProps = {
   locale: Locale;
   currency: Currency;
+  licenseType: LicenseType;
   options: {
     techs: string[];
+    categories?: { slug: string; title: string }[];
     search?: string;
+    category?: string;
     tech?: string;
     rtl?: string;
     type?: string;
@@ -19,7 +22,7 @@ type FiltersDrawerProps = {
   };
 };
 
-export function FiltersDrawer({ locale, currency, options }: FiltersDrawerProps) {
+export function FiltersDrawer({ locale, currency, licenseType, options }: FiltersDrawerProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -43,7 +46,7 @@ export function FiltersDrawer({ locale, currency, options }: FiltersDrawerProps)
                 Close
               </button>
             </div>
-            <FiltersPanel locale={locale} currency={currency} options={options} />
+            <FiltersPanel locale={locale} currency={currency} licenseType={licenseType} options={options} />
           </div>
         </div>
       ) : null}

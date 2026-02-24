@@ -12,6 +12,7 @@ type ActionType = "create" | "update" | "delete";
 type ParsedPayload = {
   action: ActionType;
   id: string;
+  categoryId: string;
   title: string;
   slug: string;
   summary: string;
@@ -26,6 +27,7 @@ type ParsedPayload = {
   tech: string[];
   hasTags: boolean;
   hasTech: boolean;
+  hasCategoryId: boolean;
 };
 
 function toEurAmount(usdAmount: number) {
@@ -82,9 +84,11 @@ async function parsePayload(request: Request) {
     const body = (await request.json()) as Record<string, unknown>;
     const hasTags = Object.prototype.hasOwnProperty.call(body, "tags");
     const hasTech = Object.prototype.hasOwnProperty.call(body, "tech");
+    const hasCategoryId = Object.prototype.hasOwnProperty.call(body, "categoryId");
     return {
       action: String(body.action ?? "create").trim().toLowerCase() as ActionType,
       id: String(body.id ?? "").trim(),
+      categoryId: String(body.categoryId ?? "").trim(),
       title: String(body.title ?? "").trim(),
       slug: String(body.slug ?? "").trim(),
       summary: String(body.summary ?? "").trim(),
@@ -98,16 +102,19 @@ async function parsePayload(request: Request) {
       tags: hasTags ? parseNameList(body.tags) : [],
       tech: hasTech ? parseNameList(body.tech) : [],
       hasTags,
-      hasTech
+      hasTech,
+      hasCategoryId
     } satisfies ParsedPayload;
   }
 
   const body = await request.formData();
   const hasTags = body.has("tags");
   const hasTech = body.has("tech");
+  const hasCategoryId = body.has("categoryId");
   return {
     action: String(body.get("action") ?? "create").trim().toLowerCase() as ActionType,
     id: String(body.get("id") ?? "").trim(),
+    categoryId: String(body.get("categoryId") ?? "").trim(),
     title: String(body.get("title") ?? "").trim(),
     slug: String(body.get("slug") ?? "").trim(),
     summary: String(body.get("summary") ?? "").trim(),
@@ -121,7 +128,8 @@ async function parsePayload(request: Request) {
     tags: hasTags ? parseNameList(body.get("tags")) : [],
     tech: hasTech ? parseNameList(body.get("tech")) : [],
     hasTags,
-    hasTech
+    hasTech,
+    hasCategoryId
   } satisfies ParsedPayload;
 }
 
@@ -345,6 +353,18 @@ async function createProduct(payload: ParsedPayload, actorUserId?: string | null
     return NextResponse.json({ ok: false, message: "This slug already exists." }, { status: 409 });
   }
 
+  let categoryConnect: { id: string } | undefined;
+  if (payload.categoryId) {
+    const category = await prisma.productCategory.findUnique({
+      where: { id: payload.categoryId },
+      select: { id: true }
+    });
+    if (!category) {
+      return NextResponse.json({ ok: false, message: "Selected category was not found." }, { status: 404 });
+    }
+    categoryConnect = { id: category.id };
+  }
+
   const product = await prisma.product.create({
     data: {
       slug: payload.slug,
@@ -353,6 +373,7 @@ async function createProduct(payload: ParsedPayload, actorUserId?: string | null
       description: payload.description || payload.summary || `${payload.title} product description`,
       coverImage: payload.coverImage || "https://picsum.photos/seed/new-product/1200/760",
       demoUrl: payload.demoUrl || null,
+      ...(categoryConnect ? { category: { connect: categoryConnect } } : {}),
       isBundle: payload.isBundle,
       status: normalizeProductStatus(payload.status),
       variants: {
@@ -435,6 +456,16 @@ async function updateProduct(payload: ParsedPayload, actorUserId?: string | null
     return NextResponse.json({ ok: false, message: "Commercial price must be a positive number." }, { status: 400 });
   }
 
+  if (payload.hasCategoryId && payload.categoryId) {
+    const category = await prisma.productCategory.findUnique({
+      where: { id: payload.categoryId },
+      select: { id: true }
+    });
+    if (!category) {
+      return NextResponse.json({ ok: false, message: "Selected category was not found." }, { status: 404 });
+    }
+  }
+
   const product = await prisma.product.update({
     where: {
       id: payload.id
@@ -446,6 +477,11 @@ async function updateProduct(payload: ParsedPayload, actorUserId?: string | null
       description: payload.description || existing.description,
       coverImage: payload.coverImage || existing.coverImage,
       demoUrl: payload.demoUrl || existing.demoUrl,
+      ...(payload.hasCategoryId
+        ? payload.categoryId
+          ? { category: { connect: { id: payload.categoryId } } }
+          : { category: { disconnect: true } }
+        : {}),
       isBundle: payload.isBundle,
       status: normalizeProductStatus(payload.status || existing.status)
     },
@@ -478,6 +514,7 @@ async function updateProduct(payload: ParsedPayload, actorUserId?: string | null
       slug: product.slug,
       status: product.status,
       isBundle: product.isBundle,
+      categoryId: payload.hasCategoryId ? payload.categoryId || null : "unchanged",
       tags: payload.hasTags ? payload.tags : "unchanged",
       tech: payload.hasTech ? payload.tech : "unchanged"
     }

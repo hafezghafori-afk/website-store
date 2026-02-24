@@ -31,6 +31,7 @@ export default async function AdminProductsPage({
   const q = one(searchParams.q)?.trim() ?? "";
   const status = one(searchParams.status) ?? "all";
   const type = one(searchParams.type) ?? "all";
+  const categoryFilter = one(searchParams.categoryId) ?? "all";
   const sort = one(searchParams.sort) ?? "new";
   const onlyNoVersions = one(searchParams.noVersions) === "yes";
 
@@ -59,6 +60,12 @@ export default async function AdminProductsPage({
     andConditions.push({ isBundle: false });
   }
 
+  if (categoryFilter === "none") {
+    andConditions.push({ categoryId: null });
+  } else if (categoryFilter !== "all") {
+    andConditions.push({ categoryId: categoryFilter });
+  }
+
   if (onlyNoVersions) {
     andConditions.push({ versions: { none: {} } });
   }
@@ -74,11 +81,18 @@ export default async function AdminProductsPage({
         ? ({ updatedAt: "desc" } as const)
         : ({ createdAt: "desc" } as const);
 
-  const [products, recentVersions] = await Promise.all([
+  const [products, recentVersions, categories] = await Promise.all([
     prisma.product.findMany({
       where,
       orderBy,
       include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true
+          }
+        },
         variants: true,
         versions: {
           orderBy: { createdAt: "desc" },
@@ -115,12 +129,22 @@ export default async function AdminProductsPage({
           }
         }
       }
+    }),
+    prisma.productCategory.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        isActive: true
+      }
     })
   ]);
 
   const publishedCount = products.filter((item) => item.status === "published").length;
   const bundleCount = products.filter((item) => item.isBundle).length;
   const noVersionCount = products.filter((item) => item._count.versions === 0).length;
+  const uncategorizedCount = products.filter((item) => !item.categoryId).length;
 
   return (
     <Container className="space-y-8 py-10 sm:py-14">
@@ -134,7 +158,7 @@ export default async function AdminProductsPage({
       <iframe name="admin-action-frame" className="hidden" title="admin-action-frame" />
 
       <section className="grid gap-4 lg:grid-cols-[1fr_auto]">
-        <form className="surface-card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+        <form className="surface-card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
           <input
             name="q"
             defaultValue={q}
@@ -152,6 +176,15 @@ export default async function AdminProductsPage({
             <option value="template">Template</option>
             <option value="bundle">Bundle</option>
           </select>
+          <select name="categoryId" defaultValue={categoryFilter} className="rounded-xl border border-border bg-white px-3 py-2 text-sm">
+            <option value="all">All categories</option>
+            <option value="none">Uncategorized</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
           <select name="sort" defaultValue={sort} className="rounded-xl border border-border bg-white px-3 py-2 text-sm">
             <option value="new">Newest</option>
             <option value="updated">Recently updated</option>
@@ -161,7 +194,7 @@ export default async function AdminProductsPage({
             <option value="no">All version states</option>
             <option value="yes">Only no-version products</option>
           </select>
-          <button type="submit" className="primary-btn text-sm sm:col-span-2 xl:col-span-6">
+          <button type="submit" className="primary-btn text-sm sm:col-span-2 xl:col-span-7">
             Apply Filters
           </button>
         </form>
@@ -192,6 +225,13 @@ export default async function AdminProductsPage({
           <p className="mt-2 text-2xl font-black text-amber-900">{noVersionCount}</p>
           <p className="mt-1 text-xs text-amber-700">Products without uploaded versions</p>
         </article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Category Coverage</p>
+          <p className="mt-2 text-2xl font-black text-slate-900">{products.length - uncategorizedCount}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Categorized products in current result · {uncategorizedCount} uncategorized
+          </p>
+        </article>
       </section>
 
       <section className="surface-card overflow-x-auto p-5">
@@ -208,6 +248,7 @@ export default async function AdminProductsPage({
               <th className="pb-2">Product</th>
               <th className="pb-2">Status</th>
               <th className="pb-2">Type</th>
+              <th className="pb-2">Category</th>
               <th className="pb-2">Tech / Tags</th>
               <th className="pb-2">Price (USD)</th>
               <th className="pb-2">Versions</th>
@@ -232,6 +273,16 @@ export default async function AdminProductsPage({
                   <td className="py-3 pr-4">{product.status}</td>
                   <td className="py-3 pr-4">{product.isBundle ? "bundle" : "template"}</td>
                   <td className="py-3 pr-4 text-xs text-slate-600">
+                    {product.category ? (
+                      <>
+                        <p className="font-medium text-slate-800">{product.category.name}</p>
+                        <p className="mt-1 text-slate-500">{product.category.slug}</p>
+                      </>
+                    ) : (
+                      "Uncategorized"
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-xs text-slate-600">
                     <p>Tech: {techList.length > 0 ? techList.join(", ") : "-"}</p>
                     <p className="mt-1">Tags: {tagList.length > 0 ? tagList.join(", ") : "-"}</p>
                   </td>
@@ -254,6 +305,14 @@ export default async function AdminProductsPage({
                       <select name="isBundle" defaultValue={product.isBundle ? "true" : "false"} className="rounded-lg border border-border bg-white px-2 py-1 text-xs">
                         <option value="false">template</option>
                         <option value="true">bundle</option>
+                      </select>
+                      <select name="categoryId" defaultValue={product.categoryId ?? ""} className="rounded-lg border border-border bg-white px-2 py-1 text-xs">
+                        <option value="">uncategorized</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
                       </select>
                       <input
                         name="personalUsd"

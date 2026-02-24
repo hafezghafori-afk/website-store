@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type AdminRouteKey = "overview" | "products" | "orders" | "users" | "reports";
+type AdminRouteKey = "overview" | "products" | "categories" | "campaigns" | "orders" | "users" | "reports";
 
 type AdminRouteNavProps = {
   locale: string;
@@ -19,6 +19,18 @@ const ROUTES: Array<{ key: AdminRouteKey; label: string; href: (locale: string) 
     label: "Products",
     href: (locale) => `/${locale}/admin/products`,
     hint: "Catalog & versions"
+  },
+  {
+    key: "categories",
+    label: "Categories",
+    href: (locale) => `/${locale}/admin/categories`,
+    hint: "Taxonomy & grouping"
+  },
+  {
+    key: "campaigns",
+    label: "Campaigns",
+    href: (locale) => `/${locale}/admin/campaigns`,
+    hint: "Coupons & promos"
   },
   {
     key: "orders",
@@ -43,7 +55,7 @@ const ROUTES: Array<{ key: AdminRouteKey; label: string; href: (locale: string) 
 export function AdminRouteNav({ locale, active }: AdminRouteNavProps) {
   return (
     <nav className="rounded-2xl border border-slate-200 bg-white p-3">
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {ROUTES.map((route) => {
           const isActive = route.key === active;
           return (

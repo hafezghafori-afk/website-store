@@ -85,15 +85,34 @@ model Product {
   description   String
   coverImage    String
   demoUrl       String?
+  categoryId    String?
   isBundle      Boolean         @default(false)
   status        ProductStatus   @default(draft)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  category      ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   variants      ProductVariant[]
   versions      ProductVersion[]
   tagMaps       ProductTagMap[]
   techMaps      ProductTechMap[]
   downloadTokens DownloadToken[]
+
+  @@index([categoryId])
+}
+
+model ProductCategory {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@unique([name])
+  @@index([sortOrder, createdAt])
 }
 
 model ProductVariant {

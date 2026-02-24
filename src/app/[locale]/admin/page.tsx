@@ -45,7 +45,7 @@ export default async function AdminPage({ params }: { params: { locale: string }
     }
   }
 
-  const [products, versions, orders, users, logs, coupons, supportTickets, auditEvents] = await Promise.all([
+  const [products, versions, orders, users, logs, coupons, supportTickets, auditEvents, productCategories] = await Promise.all([
     prisma.product.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -181,6 +181,16 @@ export default async function AdminPage({ params }: { params: { locale: string }
             email: true
           }
         }
+      }
+    }),
+    prisma.productCategory.findMany({
+      where: {
+        isActive: true
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true
       }
     })
   ]);
@@ -444,6 +454,14 @@ export default async function AdminPage({ params }: { params: { locale: string }
             />
             <input name="coverImage" placeholder="Cover image URL" className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm" />
             <input name="demoUrl" placeholder="Demo URL" className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm" />
+            <select name="categoryId" defaultValue="" className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm">
+              <option value="">No category (uncategorized)</option>
+              {productCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
             <input
               name="tech"
               placeholder="Tech stack (comma separated)"
@@ -540,6 +558,14 @@ export default async function AdminPage({ params }: { params: { locale: string }
                       <select name="isBundle" defaultValue={product.isBundle ? "true" : "false"} className="rounded-lg border border-border bg-white px-2 py-1 text-xs">
                         <option value="false">template</option>
                         <option value="true">bundle</option>
+                      </select>
+                      <select name="categoryId" defaultValue={product.categoryId ?? ""} className="rounded-lg border border-border bg-white px-2 py-1 text-xs">
+                        <option value="">uncategorized</option>
+                        {productCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
                       </select>
                       <input
                         name="personalUsd"

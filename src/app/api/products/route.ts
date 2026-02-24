@@ -25,6 +25,7 @@ export async function GET(request: Request) {
   const products = await getStoreProducts();
   const filtered = filterProducts(products, {
     search,
+    category: searchParams.get("category") ?? undefined,
     type: searchParams.get("type") ?? undefined,
     tech: searchParams.get("tech") ?? undefined,
     rtl: searchParams.get("rtl") ?? undefined,

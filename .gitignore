@@ -6,3 +6,4 @@ out
 *.log
 .vercel
 cloudflare secret key*.txt
+.env*.local

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { Container } from "@/components/container";
 import { ProductCard } from "@/components/product-card";
-import { getStoreProducts } from "@/lib/catalog";
-import { CATEGORIES, WHY_POINTS } from "@/lib/mock-data";
+import { getStoreCategories, getStoreProducts } from "@/lib/catalog";
+import { WHY_POINTS } from "@/lib/mock-data";
 import { BASE_CURRENCY, type Currency, type LicenseType, type Locale, SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { getDictionary } from "@/lib/i18n";
 
@@ -33,7 +33,7 @@ export default async function HomePage({
   const t = getDictionary(locale);
   const currency = resolveCurrency(searchParams.currency);
   const licenseType = resolveLicense(searchParams.licenseType);
-  const products = await getStoreProducts();
+  const [products, categories] = await Promise.all([getStoreProducts(), getStoreCategories()]);
 
   const newItems = products.filter((item) => item.isNew).slice(0, 3);
   const bestItems = products.filter((item) => item.isBestSeller).slice(0, 3);
@@ -62,12 +62,21 @@ export default async function HomePage({
       <section className="space-y-5">
         <h2 className="text-2xl font-black tracking-tight">{t.sections.categories}</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CATEGORIES.map((category) => (
-            <article key={category.id} className="surface-card p-5">
-              <h3 className="text-base font-bold">{category.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{category.description}</p>
-            </article>
-          ))}
+          {categories.map((category) => {
+            const categoryCount = products.filter((item) => item.category === category.slug).length;
+
+            return (
+              <Link
+                key={category.id}
+                href={`/${locale}/templates?category=${encodeURIComponent(category.slug)}`}
+                className="surface-card block p-5 transition hover:-translate-y-0.5 hover:shadow-soft"
+              >
+                <h3 className="text-base font-bold">{category.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{category.description || "Template category"}</p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.08em] text-brand-600">{categoryCount} items</p>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Preflight env alignment (non-strict)
+        run: npm run preflight:env-align -- --strict false
+
       - name: Wait for PostgreSQL
         run: |
           timeout 60 bash -c 'until </dev/tcp/127.0.0.1/5432; do sleep 1; done'
