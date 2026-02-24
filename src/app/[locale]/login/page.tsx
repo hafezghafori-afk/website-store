@@ -1,4 +1,4 @@
-import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, SignOutButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 import { Container } from "@/components/container";
 import { isClerkEnabled } from "@/lib/clerk-config";
@@ -35,7 +35,22 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
           </SignInButton>
         </SignedOut>
         <SignedIn>
-          <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">You are already signed in.</p>
+          <div className="space-y-3">
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">You are already signed in.</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Link href={`/${params.locale}/dashboard`} className="secondary-btn text-sm">
+                Go To Dashboard
+              </Link>
+              <Link href={`/${params.locale}/admin`} className="secondary-btn text-sm">
+                Open Admin
+              </Link>
+              <SignOutButton redirectUrl={`/${params.locale}/login`}>
+                <button className="secondary-btn text-sm" type="button">
+                  Logout
+                </button>
+              </SignOutButton>
+            </div>
+          </div>
         </SignedIn>
       </div>
     </Container>

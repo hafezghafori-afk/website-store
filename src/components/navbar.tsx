@@ -1,6 +1,9 @@
 import Link from "next/link";
 import type { Locale } from "@/lib/constants";
+import { NavbarAuthControls } from "@/components/navbar-auth-controls";
+import { isClerkEnabled } from "@/lib/clerk-config";
 import { getDictionary } from "@/lib/i18n";
+import { getCurrentUserId, isAdminUser } from "@/lib/server-auth";
 
 const locales: Locale[] = ["fa", "en"];
 
@@ -10,6 +13,12 @@ type NavbarProps = {
 
 export function Navbar({ locale }: NavbarProps) {
   const t = getDictionary(locale);
+  const clerkEnabled = isClerkEnabled();
+  const currentUserId = clerkEnabled ? getCurrentUserId() : null;
+  const showAdminLink = clerkEnabled && currentUserId ? isAdminUser() : false;
+  const dashboardLabel = locale === "fa" ? "داشبورد" : "Dashboard";
+  const adminLabel = locale === "fa" ? "ادمین" : "Admin";
+  const logoutLabel = locale === "fa" ? "خروج" : "Logout";
 
   return (
     <header className="border-b border-border/80 bg-white/90 backdrop-blur">
@@ -41,9 +50,17 @@ export function Navbar({ locale }: NavbarProps) {
               </Link>
             ))}
           </div>
-          <Link href={`/${locale}/login`} className="secondary-btn text-sm">
-            {t.nav.login}
-          </Link>
+          <NavbarAuthControls
+            locale={locale}
+            clerkEnabled={clerkEnabled}
+            showAdminLink={showAdminLink}
+            labels={{
+              login: t.nav.login,
+              dashboard: dashboardLabel,
+              admin: adminLabel,
+              logout: logoutLabel
+            }}
+          />
           <Link href={`/${locale}/cart`} className="primary-btn text-sm">
             {t.nav.cart}
           </Link>
