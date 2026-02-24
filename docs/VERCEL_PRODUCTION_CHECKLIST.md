@@ -14,6 +14,7 @@ This runbook is for deploying and operating `website-store` safely on Vercel wit
 
 Core:
 - `DATABASE_URL`
+- `DIRECT_URL` (recommended; required for stable Prisma migrations on Neon)
 - `NEXT_PUBLIC_APP_URL`
 
 Clerk:
@@ -55,8 +56,14 @@ npm run build
 ```
 
 Notes:
-- `npm run build` runs `prisma migrate deploy` (non-destructive; applies pending migrations only).
+- `npm run build` does **not** run migrations (prevents Vercel build failures from DB advisory locks).
+- Run migrations explicitly before/alongside production deploy:
+  - `npx prisma migrate deploy`
 - Do **not** run `prisma migrate reset` on the production database.
+
+Neon-specific:
+- Use pooled Neon URL for `DATABASE_URL` (runtime).
+- Use non-pooled direct Neon URL for `DIRECT_URL` (Prisma migrations).
 
 ## 4. Deploy to Vercel
 

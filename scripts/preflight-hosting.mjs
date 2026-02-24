@@ -164,8 +164,21 @@ function main() {
   }
 
   const databaseUrl = getEnvValue("DATABASE_URL", fileEnv);
+  const directUrl = getEnvValue("DIRECT_URL", fileEnv);
   if (databaseUrl.includes("@localhost")) {
     result.warnings.push("DATABASE_URL points to localhost. For hosting use managed production Postgres.");
+  }
+  if (databaseUrl.includes("-pooler.") && (!directUrl || isPlaceholder(directUrl))) {
+    result.warnings.push("DATABASE_URL looks like a Neon pooler URL. Add DIRECT_URL (non-pooler) for Prisma migrations.");
+  }
+  if (directUrl) {
+    if (isPlaceholder(directUrl)) {
+      result.warnings.push("DIRECT_URL is set but looks like a placeholder.");
+    } else {
+      result.passed.push(`DIRECT_URL is set (${maskValue(directUrl)}).`);
+    }
+  } else {
+    result.warnings.push("DIRECT_URL is empty. Recommended for Prisma migrate deploy (especially on Neon).");
   }
 
   if (result.errors.length === 0) {

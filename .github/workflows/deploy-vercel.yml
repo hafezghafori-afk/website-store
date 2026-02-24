@@ -25,6 +25,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
       PRODUCTION_SMOKE_URL: ${{ vars.PRODUCTION_SMOKE_URL }}
       HEALTHCHECK_TOKEN: ${{ secrets.HEALTHCHECK_TOKEN }}
     steps:
@@ -52,8 +53,18 @@ jobs:
       - name: Install Vercel CLI
         run: npm i -g vercel@latest
 
+      - name: Install project dependencies
+        run: npm ci
+
       - name: Pull Vercel environment
         run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Prisma migrate deploy (optional via DIRECT_URL)
+        if: ${{ env.DIRECT_URL != '' }}
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.DIRECT_URL }}
+          DIRECT_URL: ${{ env.DIRECT_URL }}
 
       - name: Build prebuilt output
         run: vercel build --prod --token=$VERCEL_TOKEN
